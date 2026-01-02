@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Agentic Doc RAG Studio</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .agent-pill { border-radius: 9999px; font-size: 0.75rem; padding: 0.15rem 0.55rem; }
+        .scroll-shadow {
+            box-shadow: inset 0 12px 8px -12px rgba(15,23,42,0.25);
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-50">
+<div class="max-w-6xl mx-auto px-4 py-6 space-y-6">
+    <!-- Header -->
+    <header class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+            <h1 class="text-2xl md:text-3xl font-semibold tracking-tight flex items-center gap-2">
+                <span class="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-500/20 border border-indigo-400/40">
+                    ⚙️
+                </span>
+                Agentic Doc RAG Studio
+            </h1>
+            <p class="text-sm md:text-base text-slate-300 mt-1 max-w-2xl">
+                Upload a policy, research paper, or contract and let a team of agents —
+                Planner, Retriever, Synthesizer, and Fact‑Checker — collaborate to answer your questions.
+            </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <span class="agent-pill bg-indigo-500/15 border border-indigo-400/40 text-indigo-200">Planner</span>
+            <span class="agent-pill bg-emerald-500/15 border border-emerald-400/40 text-emerald-200">Retriever</span>
+            <span class="agent-pill bg-sky-500/15 border border-sky-400/40 text-sky-200">Synthesizer</span>
+            <span class="agent-pill bg-rose-500/15 border border-rose-400/40 text-rose-200">Fact‑Checker</span>
+        </div>
+    </header>
+
+    <!-- Main layout -->
+    <main class="grid gap-4 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1.2fr)]">
+        <!-- Left column: controls -->
+        <section class="space-y-4">
+            <div class="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 md:p-5 space-y-4">
+                <div class="space-y-1">
+                    <label for="doc-url" class="text-sm font-medium text-slate-100 flex items-center justify-between">
+                        Document URL
+                        <span id="ingest-status" class="text-xs font-normal text-slate-400"></span>
+                    </label>
+                    <input id="doc-url" type="text"
+                           placeholder="https://your-document-bucket/file.pdf"
+                           class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-indigo-400/60">
+                </div>
+
+                <div class="space-y-1">
+                    <label for="questions" class="text-sm font-medium text-slate-100 flex items-center justify-between">
+                        Questions
+                        <span class="text-xs text-slate-400">One per line</span>
+                    </label>
+                    <textarea id="questions" rows="6"
+                              placeholder="What are the exclusions?
+How is user data stored?
+What is the cancellation policy?"
+                              class="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-slate-50 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/80 focus:border-indigo-400/60"></textarea>
+                </div>
+
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div class="flex flex-wrap gap-2 text-xs text-slate-400">
+                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-800/70 px-2 py-1">
+                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                            Local FAISS-style vector search
+                        </span>
+                        <span class="inline-flex items-center gap-1 rounded-full bg-slate-800/70 px-2 py-1">
+                            LLM provider:
+                            <span class="font-medium" id="llm-provider-label">auto</span>
+                        </span>
+                    </div>
+                    <button id="run-btn"
+                            class="inline-flex items-center gap-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 px-4 py-2.5 text-sm font-medium text-slate-950 shadow-lg shadow-indigo-500/25 disabled:opacity-60 disabled:cursor-not-allowed">
+                        <span id="run-btn-label">Run multi‑agent pipeline</span>
+                        <span id="run-spinner" class="hidden h-4 w-4 border-2 border-slate-900/40 border-t-slate-950 rounded-full animate-spin"></span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 space-y-3 text-xs text-slate-300">
+                <div class="flex items-center justify-between">
+                    <span class="font-semibold text-slate-100 text-sm">Agent Timeline</span>
+                    <button id="clear-log" class="text-[11px] text-slate-400 hover:text-slate-200 underline-offset-2 hover:underline">Clear</button>
+                </div>
+                <div id="agent-log" class="max-h-52 overflow-y-auto pr-1 space-y-1 text-[11px] leading-relaxed">
+                    <p class="text-slate-400">Pipeline logs will appear here (planning, retrieval, synthesis, fact‑check)…</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Right column: results -->
+        <section class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 md:p-5 flex flex-col gap-4">
+            <header class="flex items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-100">Answers & Fact‑Checks</h2>
+                    <p class="text-xs text-slate-400">Each question is answered, then passed through the Fact‑Checker agent.</p>
+                </div>
+            </header>
+
+            <div id="result-container" class="flex-1 min-h-[260px] rounded-xl border border-slate-800 bg-slate-950/70 p-3 md:p-4 overflow-y-auto space-y-3 text-sm scroll-shadow">
+                <p class="text-slate-500 text-xs">No results yet — paste a PDF URL, add a few questions, and click
+                    <span class="font-semibold text-slate-300">Run multi‑agent pipeline</span>.
+                </p>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+    const runBtn = document.getElementById('run-btn');
+    const runLabel = document.getElementById('run-btn-label');
+    const spinner = document.getElementById('run-spinner');
+    const docUrlInput = document.getElementById('doc-url');
+    const questionsInput = document.getElementById('questions');
+    const resultContainer = document.getElementById('result-container');
+    const ingestStatus = document.getElementById('ingest-status');
+    const agentLog = document.getElementById('agent-log');
+    const clearLogBtn = document.getElementById('clear-log');
+    const llmProviderLabel = document.getElementById('llm-provider-label');
+
+    // Try to infer provider label from a global injected by backend (optional)
+    llmProviderLabel.textContent = (window.AGENTIC_LLM_PROVIDER || 'Gemini / OpenAI').toString();
+
+    clearLogBtn.addEventListener('click', () => {
+        agentLog.innerHTML = '';
+    });
+
+    function logAgentStep(label, detail) {
+        const row = document.createElement('div');
+        row.className = 'flex gap-2';
+        row.innerHTML = `
+            <span class="min-w-[82px] text-[11px] uppercase tracking-wide text-slate-400">${label}</span>
+            <span class="text-[11px] text-slate-300">${detail}</span>
+        `;
+        agentLog.appendChild(row);
+        agentLog.scrollTop = agentLog.scrollHeight;
+    }
+
+    async function runPipeline() {
+        const docUrl = docUrlInput.value.trim();
+        const questionsText = questionsInput.value.trim();
+
+        if (!docUrl || !questionsText) {
+            alert('Please provide both a document URL and at least one question.');
+            return;
+        }
+
+        const questions = questionsText.split('\n').map(q => q.trim()).filter(Boolean);
+        if (!questions.length) {
+            alert('Please provide at least one non-empty question.');
+            return;
+        }
+
+        runBtn.disabled = true;
+        runLabel.textContent = 'Running agents…';
+        spinner.classList.remove('hidden');
+        resultContainer.innerHTML = '';
+        ingestStatus.textContent = 'Ingesting…';
+        logAgentStep('INGEST', 'Downloading and chunking PDF, building local vector index…');
+
+        try {
+            const payload = { documents: docUrl, questions };
+
+            const resp = await fetch('/api/v1/hackrx/run', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // Token can be injected via .env and proxied by backend; kept empty for local dev
+                    'Authorization': ''
+                },
+                body: JSON.stringify(payload),
+            });
+
+            if (!resp.ok) {
+                throw new Error('Backend returned ' + resp.status);
+            }
+
+            const data = await resp.json();
+            ingestStatus.textContent = 'Ready';
+
+            // We support two shapes:
+            // 1) { answers: [...] }
+            // 2) [{ question, answer, fact_check }, ...] or { answer, fact_check }
+            renderResults(questions, data);
+        } catch (err) {
+            console.error(err);
+            ingestStatus.textContent = 'Error';
+            resultContainer.innerHTML = `<p class="text-xs text-rose-400">Something went wrong while calling the API. Check the console / backend logs.</p>`;
+        } finally {
+            runBtn.disabled = false;
+            runLabel.textContent = 'Run multi‑agent pipeline';
+            spinner.classList.add('hidden');
+        }
+    }
+
+    function renderResults(questions, data) {
+        resultContainer.innerHTML = '';
+        logAgentStep('PLAN', 'Planner decomposed questions and created hypotheticals for retrieval.');
+        logAgentStep('RETRIEVE', 'Retriever pulled top-ranked context chunks from FAISS / NumPy index.');
+        logAgentStep('SYNTHESIZE', 'Synthesizer built structured answers from the retrieved context.');
+        logAgentStep('FACT‑CHECK', 'Fact‑Checker compared answers against context to flag hallucinations.');
+
+        // Case 1: data.answers is a simple list of strings
+        if (Array.isArray(data.answers)) {
+            data.answers.forEach((ans, idx) => {
+                const q = questions[idx] || `Question ${idx + 1}`;
+                addAnswerCard(q, ans, null);
+            });
+            return;
+        }
+
+        // Case 2: single-object { answer, fact_check }
+        if (typeof data.answer === 'string') {
+            addAnswerCard(questions[0] || 'Question', data.answer, data.fact_check || null);
+            return;
+        }
+
+        // Case 3: array of enriched answer objects
+        if (Array.isArray(data)) {
+            data.forEach((row, idx) => {
+                const q = row.question || questions[idx] || `Question ${idx + 1}`;
+                addAnswerCard(q, row.answer, row.fact_check || null);
+            });
+            return;
+        }
+
+        resultContainer.innerHTML = '<p class="text-xs text-slate-400">Unexpected response format from API.</p>';
+    }
+
+    function addAnswerCard(question, answer, factCheck) {
+        const card = document.createElement('article');
+        card.className = 'rounded-xl border border-slate-800 bg-slate-900/70 p-3 md:p-4 space-y-2';
+
+        const badgeColor = factCheck && factCheck.verdict === 'supported'
+            ? 'bg-emerald-500/15 text-emerald-200 border-emerald-400/40'
+            : factCheck && factCheck.verdict === 'unsupported'
+                ? 'bg-rose-500/15 text-rose-200 border-rose-400/40'
+                : 'bg-amber-500/10 text-amber-200 border-amber-400/40';
+
+        card.innerHTML = `
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <h3 class="text-xs font-semibold text-slate-200">Q: ${question}</h3>
+                </div>
+                ${factCheck ? `
+                <span class="agent-pill border ${badgeColor}">
+                    Fact‑Check: ${factCheck.verdict || 'n/a'}
+                </span>` : ''}
+            </div>
+            <div class="text-sm text-slate-100 leading-relaxed whitespace-pre-wrap">
+                ${answer || '<span class="text-slate-500 text-xs">No answer returned.</span>'}
+            </div>
+            ${factCheck ? `
+            <div class="mt-2 border-t border-slate-800 pt-2 flex flex-col gap-1">
+                <p class="text-[11px] text-slate-400">
+                    <span class="font-semibold text-slate-300">Hallucination risk:</span>
+                    ${(factCheck.risk_score ?? 0).toFixed(2)}
+                </p>
+                <p class="text-[11px] text-slate-400">
+                    ${factCheck.notes || ''}
+                </p>
+            </div>` : ''}
+        `;
+        resultContainer.appendChild(card);
+    }
+
+    runBtn.addEventListener('click', runPipeline);
+</script>
+</body>
+</html>
